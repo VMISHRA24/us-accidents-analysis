@@ -1,0 +1,798 @@
+---
+title: "The Aggregators"
+author: "Team F"
+date: "4/25/2021"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+We are team F "The Aggregators", we would like to analyse US Accidents data set, which has accidents data from 2016 to 2020.
+
+#Introduction: 
+Road accidents have become very common in recent years, Every year, over 38000 people die in road accidents in United States, and 4.4 million people are seriously injured enough to require medical attention. Source- https://www.asirt.org/safe-travel/road-safety-facts/
+
+#Research question:
+We will try to find the trend of accident and the factors effecting accidents. We will also analyze the details of US Accidents in different states to be able to check what can be done to reduce accidents and also to avoid its effect on road traffic.
+
+#Objective:
+Looking at the severity of the road accidents, for this project we have decided to use the US Accident- A Countrywide Traffic Accident Dataset (2016-2000) to 
+investigate and generate various insights on causes such as time, place etc. 
+In first part, we have analyzed the basic information on accidents through out the United states such as 
+1. To determine the top 5 states and top 5 cities with respective to number of accidents.
+2. To determine whether there is a trend in severity of accidents over passing years?
+3. To determine the number of accidents per year while taking severity into account.
+4. To determine which month has highest number of accidents.
+5. To determine which days of the week has more number of accidents
+6. To determine which part of the day has majority of accidents
+7. To determine which time majority of accidents occur.
+8. To determine accidents based on severity levels.
+9. To determine severity of accident in different years.
+10. To determine which side of the road has more accidents.
+11. What are the top 10 weather conditions that contribute most accidents?
+
+In part two, we have analyzed what all factors affecting on the road accidents.
+1. Correlation between various severity and different variables
+2. Number of accidents by states based on weather conditions and total accidents.
+3. Number of accidents by month based on precipitation and temperature
+4. How would you evaluate impact of humidity, wind chill and wind speed on severity of accidents?
+5.Temperature affect on severity 
+ 
+Dataset information:
+Source: Kaggle (https://www.kaggle.com/sobhanmoosavi/us-accidents)
+Source of data- This dataset was collected by Bing, MapQuest & MapQuest-Bing using multiple Traffic APIs.
+
+US_Accidents_Sample %>% group_by(Source) %>% summarise(total= n())
+
+Description:
+This is a country wide traffic accident data-set which covers 49 states of the US. There are about 4.2 million accident records in this data-set.It contains all sort of information related to each accident like the weather condition during the accident, which side the accident occurred, address, time of accident etc. There are a total of 49 observations.
+
+Description of variables in dataset are mentioned below:
+
+
+```{r}
+#run library
+
+library(tidyverse)
+library(cluster)    #clustering algorithms
+library(factoextra) #clustering algorithms & visualization
+library(sparklyr)#
+library(usmap)#Plot all states of the U.S. to create an empty map.
+library(ggplot2)#use ggplot2 to add layer for visualization
+library(plotly)
+```
+Import dataset
+```{r}
+US_Accidents <- read_csv("US_Accidents.csv")
+```
+List column names of data set to 
+```{r}
+colnames(US_Accidents)
+```
+Number of rows in data-set to know about length of dataset
+```{r}
+nrow(US_Accidents)
+
+```
+Sampling US_Accidents data-set:
+Since this is huge dataset to analyse as our R is taking time to process huge dataset we decided to sample dataset, since it is easier for us to analyse. The new data-set will contain 1 million rows
+```{r}
+US_Accidents_Sample <- US_Accidents[sample(nrow(US_Accidents), 1000000, replace = FALSE, prob = NULL),]
+
+```
+Checking type of data frame to confirm it is a tibble
+```{r}
+is_tibble(US_Accidents_Sample)
+```
+Export sample data to share with Team members
+
+```{r}
+write_csv(US_Accidents_Sample,"US_Accidents_Sample.csv")
+
+```
+Tidy data-set- This dataset has 1 million rows and it has many anomalies like the date and time format, multiple values for zipcode in the same row, etc. To address all these tidying data is an important step to be followed. Following code tidy up our data set.
+
+```{r}
+#Changing the Start_Time date format and converting into default format
+
+US_Accidents_Sample$Start_Time <- as.POSIXct(US_Accidents_Sample$Start_Time , format = '%Y/%m/%d %H:%M:%S', tz = 'UTC')
+
+```
+
+```{r}
+    
+#Adding weekday column to the dataset for analysis
+US_Accidents_Sample$weekday <- weekdays(US_Accidents_Sample$Start_Time)
+
+```
+
+```{r}
+#Separating the time and date value for "Start_time" and "End_time" Column using separate function.
+
+US_Accidents_Sample <- US_Accidents_Sample %>% 
+  separate(Start_Time, into= c("Accident_year","Start_Accident_month", "Start_Accident_date", "Start_Accident_Hour","Start_Accident_min","Start_Accident_sec")) %>% separate(End_Time, into= c("End_Accident_year","End_Accident_month", "End_Accident_date", "End_Accident_Hour","End_Accident_min","End_Accident_sec"))
+
+```
+Removed few columns since they are having same value through out the data for example country column,Also removed columns which doesn't have any values except null for example end longitude and end latitude,Also removed few columns since they have multiple values which is breaking rule number 3 of tidy data for example zipcode which are not required for analysis.
+To know the column names or number, we first check the column name and then with select function we remove the unwanted columns. Assigning the changes to the same dataset (US_Accidents_Sample) to avoid confusion.
+
+Changing few column names to make them more readable and consistance through out analysis to prevent confusion while performing analysis since some of these column names have parenthesis and different letter case.
+
+```{r}
+colnames(US_Accidents_Sample) = c("ID","Source", "TMC","Severity", "Accident_year", "Start_Accident_month","Start_Accident_date","Start_Accident_hour","Start_Accident_min", "Start_Accident_sec","End_Accident_year","End_Accident_month","End_Accident_date","End_Accident_Hour","End_Accident_min","End_Accident_sec","Start_Lat","Start_Lng","End_Lat","End_Lng","Distance", "Description","Number","Street","Side","City","County","State","Zipcode", "Country", "Timezone","Airport_Code", "Weather_TimeStamp", "Temperature","Wind_Chill","Humidity","Pressure","Visibility","Wind_Direction","Wind_Speed","Precipitation","Weather_Condition","Amenity","Bump","Crossing","Give_Way","Junction","No_Exit","Railway","Roundabout","Station","Stop","Traffic_Calming","Traffic_Signal","Turning_loop", "Sunrise_Sunset", "Civil_Twilight", "Nautical_Twilight","Astronomical_Twilight", "Weekday")
+
+```
+
+
+```{r}
+US_Accidents_Sample <- US_Accidents_Sample %>% 
+  mutate_at(c(3,4,5,6,7,8,9,10,11,12,13,14,15,16), as.integer)
+```
+
+```{r}
+##Exporting the tidy dataset so that we don't have to rerun all the codes again to get a tidy data.
+
+write_csv(US_Accidents_Sample,"US_Accidents_Sample.csv")
+```
+
+
+##Map of accidents
+```{r}
+
+p<-plot_usmap(regions = "states",labels = T,label_color="black", fill="sky blue", color = "black") + labs(title = "STATES OF USA") + 
+  theme(panel.background=element_blank())
+ #Set label font size
+p$layers[[2]]$aes_params$size <- 2
+print(p)
+
+```
+
+##Top 5 States and Top 5 Cities with most number of accidents
+To determine the top 5 states and top 5 cities with respective to number of accidents.
+Accident by State, arranged in descending order and visualizing top 5 states by number of accidents.
+
+```{r}
+
+# Here to get the data by state, we have grouped data by state then summarized it to get the count of accidents by state and arranged it in descending order.
+by_state <- US_Accidents_Sample %>%
+  group_by(State) %>%
+  summarise(No.of_accident = n()) %>%
+  arrange(desc(No.of_accident)) %>%
+  mutate(percentage_accident = round(No.of_accident / sum(No.of_accident) * 100,2))
+
+
+#Summary of accidents by state- this shows the mean, median, mode of number of accidents per state. This also gives us information on quaterly accidents.
+summary(by_state)
+
+
+#graph showing top 5 states with highest number of accidents.
+# Here we have used gglot to plot the top 5 states with highest number of accidents.
+top_states <- top_n(by_state, 5)
+
+ggplot(data = top_states, aes(x = State, y = No.of_accident, fill = State)) +
+  geom_histogram(stat = "identity") +
+  ggtitle("Top 5 Accident States") +
+  geom_text(aes(label=paste0(round(percentage_accident,2),"%")),
+    vjust = 1.5,
+    color = "white",
+    size = 3.5
+  )+ 
+  theme_grey()
+
+```
+
+From the graph top 5 accident states we can conclude that California has highest number of accidents with almost 23% of all accidents in USA.The next state after California is Texas with approx 9% of the total number of accidents. It would be interesting to know what factors contribute sharp decline in number of accidents in Texas considering that TX is twice the size of CA.
+
+To know about number of accidents in top 5 states here we have grouped data by state then summarized it to get the count of accidents by state and arranged it in descending order.
+
+## Top 5 cities with most number of accidents in USA
+
+```{r}
+by_cities<- US_Accidents_Sample %>% 
+  group_by(City) %>% 
+  summarise(No.of_accident = n()) %>% 
+  arrange(desc(No.of_accident)) %>% mutate(percentage_accident1 = round(No.of_accident/sum(No.of_accident)*100,2))
+
+top_cities<- top_n(by_cities, 5)
+
+
+ggplot(data = top_cities, aes(x = City, y = No.of_accident, fill = City)) +
+  geom_histogram(stat = "identity") +
+  ggtitle("Top 5 Accident Cities") +
+  geom_text(aes(label=paste0(round(percentage_accident1,2),"%")),
+    vjust = 1.5,
+    color = "white",
+    size = 3.5
+  )+ 
+  theme_grey()
+```
+
+##Top 5 cities in califrnia with highest number of accidents
+
+```{r}
+by_city<- US_Accidents_Sample %>%
+  filter(State =="CA") %>% 
+  group_by(City) %>%
+  summarise(No.of_accident = n())
+
+top_california_cities<- top_n(by_city, 5)
+
+fig <- top_california_cities %>% 
+top_n(6,wt=No.of_accident)%>% plot_ly(labels = ~City, values = ~No.of_accident)
+
+fig <- fig %>% add_pie(hole = 0.6)
+
+fig <- fig %>% layout(title = "Donut Charts(Number of Accidents as per TOP 5 CA cities )", showlegend = T, xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE), yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))%>% print(fig)
+```
+
+## Accidents Trends by Year, Month, Week, Day & time
+
+###Accident Per Year- The following query calculates and visualizes the number of accidents per year.
+
+```{r}
+
+by_year<- US_Accidents_Sample %>% 
+  group_by(Accident_year) %>% 
+  summarise(total_accident= n()) %>% 
+  mutate(percentage= round(total_accident/sum(total_accident)*100,2))
+  
+  
+#To group the number of accidents based on year we used group_by function for Accident_year, and then used summarise function to calculate total number of accidents.
+
+ggplot(data = by_year) +
+  geom_col(mapping = aes(x = Accident_year, y = total_accident, fill = Accident_year))+
+  geom_line(mapping = aes (x = Accident_year, y = total_accident ))+
+  geom_text(
+    aes(x = Accident_year, y = total_accident, label=paste0(round(percentage,2),"%")),
+    vjust = 1.5,
+    color = "white",
+    size = 3.5)+labs(x="Year", y="Total number of Accidents")+
+  ggtitle("Accidents by Year") +scale_y_continuous(labels = scales::comma)
+  theme_grey()
+```
+
+### Accident Per Month
+```{r}
+
+US_Accidents_Sample <- transform(US_Accidents_Sample, month = month.abb[Start_Accident_month])
+
+by_month <- US_Accidents_Sample %>%
+  group_by(month) %>%
+  summarise(Total_Accident = n()) %>%
+  mutate(Percentage = round(Total_Accident / sum(Total_Accident) *
+                                       100, 2))
+
+#Here we have used group by to group Start_Accident_month than assigned the total number of accidents in a variable. We also created a new column by using mutate(), in this we used round() which rounds the values in its first argument to the specified number of decimal places(default 0).sum() in percentage formula  is used to get values in percentage.
+
+ggplot(data = by_month) +
+  geom_col(mapping = aes(x = month, y = Total_Accident, fill = month))+
+  geom_line(mapping = aes (x = month, y = Total_Accident, ))+
+  geom_text(
+    aes(x = month, y = Total_Accident, label=paste0(round(Percentage,2),"%")),
+    vjust = 1.5,
+    color = "white",
+    size = 3.5)+ labs(x="Months", y="Total number of Accidents")+
+  ggtitle("Accidents by Month") +scale_y_continuous(labels = scales::comma) + scale_x_discrete(limits = month.abb)
+  theme_grey()
+
+#The function ggplot() creates a coordinate system that you can add layers to and geom_bar(data=by_month) adds a blank graph. Geom is another layer which determines the shape of the chart.Pie Chart = stacked bar chart + polar coordinates. We have first created a bar chart using geom_bar, stat = "identity" is to skip the aggregation and it will consider the y values and ggtitle is for adding title to overall plot title. geom_text is for adding labels in which paste0 function in R simply concatenates the vector without any separator. A theme_classic() shows x and y axis lines and no gridlines and the coord_polar() is used to produce a pie chart.
+
+```
+
+#Observation
+This chart shows that July has the least percentage of accidents and December has the highest percentage of accidents which is the holiday season in the USA, it is quite surprising that holidays have an significant effect on accidents.
+
+##Accident Per Week
+
+```{r}
+by_weekday<- US_Accidents_Sample %>%
+select(Weekday) %>% group_by(Weekday) %>%
+summarise(Total_Accident= n())
+ 
+ggplot(data = by_weekday) +
+geom_col(mapping = aes(x = Weekday, y = Total_Accident, fill = Weekday))+
+geom_line(mapping = aes (x = Weekday, y = Total_Accident))+coord_flip() +geom_text(
+aes(x = Weekday, y = Total_Accident, label=paste0(round(Total_Accident/sum(Total_Accident)*100,2),"%")),
+vjust = 0.5, hjust=2,
+color = "black",
+size = 3.5)+ ggtitle("Accidents on Days") +labs(y="Total number of Accidents", x="Weekdays")
+```
+
+
+## by time- What part of the day? (change which time to any other name)Analyzing the distribution of severity of the accidents and checking at which time majority of these accidents occur.
+
+```{r}
+
+day_night <- US_Accidents_Sample %>% select(Severity, Sunrise_Sunset) %>% group_by(Sunrise_Sunset) %>% 
+  summarise(total = n()) %>% na.omit
+  
+ggplot(data = day_night)+
+  geom_col(mapping = aes(x=Sunrise_Sunset, y= total, fill= total))+
+  scale_y_continuous(labels = scales::comma)+
+  geom_text(aes(x = Sunrise_Sunset, y = total, label= (total), vjust=0.02))+
+  ggtitle("Accident Count at Day & Night")
+
+#The function ggplot() creates a coordinate system in which you can add layers to it and geom_bar(data=top_states) adds a blank graph, The mapping argument is always paired with aes(), and the x and y arguments of aes() specify which variables to map to the x and y axis and geom_bar() will create a bar chart with x axis = Severity
+
+```
+
+Analyzing the distribution of the accidents and checking at which time majority of these accidents occur.#As now we know that day has majority of accidents, now we are trying to find which time of the day has most accidents.
+
+```{r}
+by_timeofDay<-
+  US_Accidents_Sample %>% 
+  group_by(Start_Accident_hour) %>% 
+  summarise(accident_count= n()) %>% 
+  na.omit
+
+#Here we have used group_by() to group Start_Accident_hour ,summarise() will Collapse many values down to a single summary into variable named count.The Pipe %>% operator is used to update a value by first piping it into one or more expressions, and then assigning the result.
+
+ggplot(data = by_timeofDay) +
+  geom_col(mapping = aes(x = Start_Accident_hour, y = accident_count, fill = accident_count ))+
+  geom_text(
+    aes(x = Start_Accident_hour, y = accident_count, label= (accident_count)),
+    vjust = 0.01,
+    color = "black",
+    size = 2.5)+
+  ggtitle("Accidents by Hour")+ labs(y="Total Accidents", x="Hours") +scale_y_continuous(labels = scales::comma)+ scale_x_continuous(limits = c(1, 24))
+  theme_grey()
+```
+
+The function ggplot() creates a coordinate system in which you can add layers to it and geom_bar(data=top_states) adds a blank graph, The mapping argument is always paired with aes(), and the x and y arguments of aes() specify which variables to map to the x and y axis and geom_bar() will create a bar chart with x axis = Severity
+
+##Observation-
+From the bar graph we can see that most of the accidents occurs in day time. One possible reason that we could think of is due to higher commute during day  compared to night.
+From the second graph, we can see that most of the accidents occurs at 7am, 8am, 4pm and 5pm. One of the reasons could be these are office starting hours and most of the people leave for work and come back from work at these timings.
+
+```{r}
+by_severity<- US_Accidents_Sample %>%
+  group_by(Severity) %>% 
+  summarise(No.of_accident = n())
+
+severity_donut <- by_severity %>% plot_ly(labels = ~Severity, values = ~No.of_accident)%>% add_pie(hole = 0.4)
+
+severity_donut <- severity_donut %>% layout(title ="Severity based on Accidents",showlegend = T, xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE), yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))%>% print(severity_donut)
+
+```
+# Severity of accidents in different years
+
+```{r}
+#using ggplot we created a bar graph , adding a layer to ggplot using geom_bar and in ascetics we have taken accident_year on X-Axis and fill for severity, followed by position function with dodge to align them side by side without any overlapping of bars, then titled the graph as Accidents by Year using ggtitle function, then gave the theme in light color for background using theme_light
+
+#Since in the above graph severity 1 and 4 accidents were not clearly visible, we plotted separate graph for each severity type.
+
+by_year<- US_Accidents_Sample %>% 
+  group_by(Accident_year) %>% 
+  summarise(total_accident= n())
+
+#To group the number of accidents based on year we used group_by function for Accident_year, and then used summarise function to calculate total number of accidents.
+
+ggplot(data = US_Accidents_Sample)+
+  geom_bar(mapping = aes(x= Accident_year, fill= as_factor(Severity)), position = "dodge")+
+  ggtitle("Accidents by Year")+
+  theme_grey()
+
+#Since in the above graph severity 1 and 4 accidents were not clearly visible, we plotted separate graph for each severity type.
+
+ggplot(data = US_Accidents_Sample)+
+  geom_bar(mapping = aes(x= Accident_year,colour = "Severity"), colour = "blue", fill = "pink")+
+  ggtitle("Accidents by Year")+
+  theme_grey()+
+  facet_wrap(~Severity)
+
+```
+Part-2
+
+##Creating Spark Connect
+```{r}
+sc <- spark_connect(master = "local", version = "2.3") #create spark connection
+
+df_Spark <- sapply(read.csv("US_Accidents_Sample.csv"), class)
+
+df_Spark <- spark_read_csv(sc,"US_Accidents_Sample.csv")#load data in Spark
+
+```
+
+# accidents by side- Sparkly R
+Analyze which side of the road has more accidents
+```{r}
+by_side <- df_Spark %>% 
+  group_by(Side) %>% 
+  summarise(count = n()) %>% 
+  collect() %>%
+  print()
+
+
+# Here we have used group_by() to group Side variable,summarise() will Collapse many values down to a single summary into variable named count.The Pipe %>% operator is used to update a value by first piping it into one or more expressions, and then assigning the result.
+
+
+  ggplot(data = by_side, mapping = aes (x= Side,y= count, fill = Side))+
+  geom_bar(stat="identity")+
+    ggtitle("Accidents_by_Side")+
+    geom_text(aes(label= count), vjust=1.5, color="black", size=3.5)+
+  scale_y_continuous(labels = scales::comma)+
+  theme_classic()
+  
+#The function ggplot() creates a coordinate system that you can add layers to and ggplot(data=by_side) adds a blank graph. The next layer is geom which determines the shape of the chart, here it is bar chart. ggtitle is used to give over all title to chart and geom_text is used to modify text like label is used to display count on bars.
+
+
+```
+
+Observations-
+The graph shows that most of the accidents occurs at the right side of the road whereas left side are very less number of accidents. It is quite surprising because the left most lanes is the fastest one. One reason for this could be high number of lane merging that vehicles do while entering or exiting the express.
+
+# Weather conditions
+```{r}
+
+#Analyze number of accidents in different Weather conditions along with to 10 weather conditions that contributes the most.
+
+
+by_weather_condition<- US_Accidents_Sample %>% 
+  group_by(Weather_Condition) %>% 
+  summarise(Total_Accident=n()) %>% 
+  mutate(percentage= round(Total_Accident/sum(Total_Accident)*100,2)) %>% na.omit
+
+##Here we don't need na.omit as spark drops rows with NAs
+
+top10_WC<- by_weather_condition %>% top_n(10) 
+
+ggplot(data = top10_WC) +
+  geom_col( mapping = aes(x = Weather_Condition, y = percentage, fill = Weather_Condition ))+ coord_flip()+
+  geom_line(mapping = aes (x = Weather_Condition, y = percentage, ))+
+  geom_text(
+    aes(x = Weather_Condition, y = percentage, label=paste0(round(percentage,2),"%")),
+    hjust = 0.4,
+    color = "black",
+    size = 4)+
+  ggtitle("Accidents by Weather Condition")+ labs(y="Percentage of Accidents", x="Weather Conditions") +scale_y_continuous(labels = scales::comma)
+  theme_grey()
+  
+```
+Observation-
+Counter intuitively, most of the accidents appear to occur in fair and clear weather conditions
+
+#severity correlation
+```{r}
+df <- US_Accidents_Sample %>% 
+  mutate_at(c(4,54,34,36,37,38,40, 41,43,44,21,45, 46, 47, 48, 49, 50, 51, 52, 53, 54), as.integer) %>% 
+  select(4,54,34,36,37,38,40, 41,43,44,21,45, 46, 47, 48, 49, 50, 51, 52, 53, 54) %>% na.omit
+
+library(corrr)
+library(ggcorrplot)
+options(repr.plot.width=12, repr.plot.height=12)
+corr <- round(cor(df, use="complete.obs"), 2)
+ggcorrplot(corr, lab = TRUE,colors = c("aquamarine", "white", "dodgerblue"), 
+           show.legend = F, outline.color = "gray", type = "upper",  
+           tl.cex = 10, lab_size = 3, sig.level = .1) +
+           labs(fill = "Correlation")
+```
+##Clustering- Aditi
+Number of accidents by month based on precepetation and temperature.
+
+```{r}
+
+library(cluster)# clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+library(gridExtra)
+
+df0 <- US_Accidents_Sample %>%
+group_by(month) %>% na.omit() %>% 
+summarise(total_acc = n(),avg_temperature = mean(Temperature,na.rm=T), avg_precipitation = mean(Precipitation, na.rm=T)) 
+
+df3<-column_to_rownames(df0, var = "month") %>% 
+  select(avg_temperature, avg_precipitation, total_acc)
+
+df3 <-df3 %>% na.omit() %>% scale()
+distance <- get_dist(df3)
+head(df3)
+
+k3<- kmeans(df3, centers=2, nstart=25) 
+
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+
+tidy(k3)
+set.seed(1234)
+fviz_cluster(k3, data = df3)
+
+#TRYING THREE DIFF METHOD
+set.seed(1234)
+fviz_nbclust(df3, kmeans, method = "wss") #To determine optimal number of cluster- Elbow method (within distance)
+
+fviz_nbclust(df3, kmeans, method = "silhouette") #measuring quality
+
+# compute gap statistic
+set.seed(1234)
+gap_stat <- clusGap(df3, FUN = kmeans, nstart = 25,
+                    K.max = 5, B = 80)
+# Print the result
+print(gap_stat, method = "firstmax")
+fviz_gap_stat(gap_stat)
+
+# Compute k-means clustering with k = 3
+set.seed(1234)
+final <- kmeans(df3, 3, nstart = 25) #out of three we get number 3 as a optimal number of cluster
+print(final)
+fviz_cluster(final, data = df3)
+tidy(final)
+
+```
+
+##Clustering- Vijeta
+
+```{r}
+
+##Clustering
+#selecting the columns that has weather information, removing NAs 
+
+weather <- US_Accidents_Sample %>% 
+  select(c(State, Temperature:Precipitation, -Wind_Direction)) %>% 
+  na.omit() 
+
+by_weather_cluster <- weather %>% 
+  group_by(State) %>% 
+  summarise_all(mean) %>% 
+  remove_rownames %>% column_to_rownames(var="State") %>% 
+  scale()
+
+
+#This starts to illustrate which states have large dissimilarities (red) versus those that appear to be fairly similar (teal)
+
+#get_dist: for computing a distance matrix between the rows of a data matrix. The default distance computed is the Euclidean; however, get_dist also supports distanced described in equations 2-5 above plus others.
+#fviz_dist: for visualizing a distance matrix
+
+distance <- get_dist(by_weather_cluster)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+##While we now have a statistical and visual understanding of the distance among the observations (rows) in our dataset. We need to use clustering to assign those observations in different groups (clusters)
+```{r}
+
+k2 <- kmeans(by_weather_cluster, centers = 2, nstart = 25)
+str(k2)
+tidy(k2) #the tidy() function summarizes on a per-cluster level
+
+fviz_cluster(k2, data = by_weather_cluster)
+
+### Elbow Method
+
+set.seed(1234)
+fviz_nbclust(by_weather_cluster, kmeans, method = "wss")
+
+### Average Silhouette Method
+
+fviz_nbclust(by_weather_cluster, kmeans, method = "silhouette")
+
+# compute gap statistic
+set.seed(1234)
+gap_stat <- clusGap(by_weather_cluster, FUN = kmeans, nstart = 25,
+                    K.max = 10, B = 50)
+# Print the result
+print(gap_stat, method = "firstmax")
+fviz_gap_stat(gap_stat)
+
+
+#Final Cluster with 4 K
+
+k2 <- kmeans(by_weather_cluster, centers = 4, nstart = 25)
+str(k2)
+tidy(k2) #the tidy() function summarizes on a per-cluster level
+
+fviz_cluster(k2, data = by_weather_cluster)
+```
+
+
+
+#Data Manipulation for Analysis
+
+weather <- US_Accident_Sample %>% 
+  select(c(State, Temperature:Precipitation, -Wind_Direction)) %>% 
+  na.omit() %>% 
+  group_by(State) %>% 
+  summarise_all(mean)
+
+total_accident <- US_Accident_Sample %>% 
+  group_by(State) %>% 
+  summarise(count= n())
+
+#merging weather and total_accident dataframe
+
+df <- merge(weather, total_accident)
+
+##Combining population dataset to df using merge function
+
+#importing population data
+US_Population<- read_csv("US_Population.csv")
+
+#combining two dataset
+df_final <- merge(df,US_Population)
+
+## Data Preparation
+
+Here we will use a conventional 60% / 40% split where we train our model on 60% of the data and then test the model performance on 40% of the data that is withheld.
+
+```{r}
+set.seed(123)
+sample <- sample(c(TRUE, FALSE), nrow(df_final), replace = T, prob = c(0.6,0.4))
+train <- df_final[sample, ]
+test <- df_final[!sample, ]
+
+```
+
+## Linear Regression
+
+
+#### Model3- Linear Regression
+
+```{r}
+
+## model building formula, change variables as per dataset
+model3 <- lm(count ~ Population,  data = train)
+
+# Check model output 
+summary(model3)
+tidy(model3)
+
+```
+#### Interpretation-
+First, we check variables significance. We can see from the summary of our models that our coefficients for Population and Temperature is statistically significant (p-value < 0.05). It also shows that for every 1 unit increase in population there is 0.0006846 unit increase in number of accidents
+
+Next, we want to understand the extent to which the model fits the data i.e. Goodness of fit
+
+Residual standard error (RSE)- The RSE provides an absolute measure of lack of fit of our model to the data. But since it is measured in the units of Y, our response variable, it is not always clear what constitutes a good RSE
+
+R squared (R2)- The result suggests that our model with 2 predictors can explain 83% of the variability in our accident data. Also, the difference between R2 and adj. R2 is not much, which indicates that both variable are significant.
+
+F-statistic- In our summary print out above for model 1 we see that F= 70.76 with p<0.05 suggesting that the variables are related to total number of accidents.
+
+Combined, our RSE, R2, and F-statistic results suggest that our model has a good fit.
+
+```{r}
+
+confint(model3)
+
+#Assessing Our Model Visually
+
+model3_results <- augment(model3, train) %>%
+  mutate(Model = "Model 1")
+
+ object_name_m3 <- ggplot(model3_results, aes(.fitted, .resid))+ 
+  geom_point()+
+  stat_smooth(method="loess")+
+  geom_hline(yintercept=0, col="red", linetype="dashed")+
+  xlab("Fitted values")+
+  ylab("Residuals")+
+  ggtitle("Residual vs Fitted Plot")+
+  theme_bw()
+
+ object_name_m3
+
+```
+
+```{r}
+#Applying square root transformation
+ 
+model3a <- lm(sqrt(count) ~ Population, data = train)
+ 
+# Check model output 
+ 
+summary(model3a)
+tidy(model3a)
+
+# Assessing Coefficients
+
+confint(model3a)
+
+#Assessing Our Model Visually
+
+ object_name_m3a <- ggplot(model3a, aes(.fitted, .resid))+ 
+  geom_point()+
+  stat_smooth(method="loess")+
+  geom_hline(yintercept=0, col="red", linetype="dashed")+
+  xlab("Fitted values")+
+  ylab("Residuals")+
+  ggtitle("Residual vs Fitted Plot (sqrt)")+
+  theme_bw()
+ 
+ object_name_m3a
+ 
+#Try with applying a log transformation
+model3b <- lm(log(count) ~ Population, data = train)
+ 
+ # Check model output 
+summary(model3b)
+tidy(model3b)
+
+# Assessing Coefficients
+
+confint(model3b)
+
+#Assessing Our Model Visually
+
+ object_name_m3b <- ggplot(model3b, aes(.fitted, .resid))+ 
+  geom_point()+
+  stat_smooth(method="loess")+
+  geom_hline(yintercept=0, col="red", linetype="dashed")+
+  xlab("Fitted values")+
+  ylab("Residuals")+
+  ggtitle("Residual vs Fitted Plot (log)")+
+  theme_bw()
+ 
+ object_name_m3b
+ 
+gridExtra::grid.arrange(object_name_m3, object_name_m3a, object_name_m3b)
+
+```
+
+### Comparing standardized residuals versus fitted values.
+This is the same plot as above but with the residuals standardized to show where residuals deviate by 1, 2, 3+ standard deviations. This helps us to identify outliers that exceed 3 standard deviations.
+
+The second is the scale-location plot. This plot shows if residuals are spread equally along the ranges of predictors.
+
+```{r}
+p1_1 <- ggplot(model1, es(.fitted, .std.resid)) +
+  geom_ref_line(h = 0) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  ggtitle("Standardized Residuals vs Fitted")
+
+p2_1 <- ggplot(model1, aes(.fitted, sqrt(.std.resid))) +
+  geom_ref_line(h = 0) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  ggtitle("Scale-Location")
+
+
+gridExtra::grid.arrange(p1, p2, nrow = 1)
+```
+
+
+##Cook’s Distance and residuals versus leverage plot
+
+```{r}
+ggplot(model3_results, aes(seq_along(.cooksd), .cooksd))+
+  geom_bar(stat="identity", position="identity")+
+  xlab("Obs. Number")+
+  ylab("Cook's distance")+
+  ggtitle("Cook's distance")+
+  theme_bw()
+    
+ggplot(model3_results, aes(.hat, .std.resid))+
+  geom_point(aes(size=.cooksd), na.rm=TRUE)+
+  stat_smooth(method="loess", na.rm=TRUE)+
+  xlab("Leverage")+
+  ylab("Standardized Residuals")+
+  ggtitle("Residual vs Leverage Plot")+
+  scale_size_continuous("Cook's Distance", range=c(1,5))+
+  theme_bw()+
+  theme(legend.position="bottom")
+    
+ggplot(model3_results, aes(.hat, .cooksd))+
+  geom_point(na.rm=TRUE)+
+  stat_smooth(method="loess", na.rm=TRUE)+
+  xlab("Leverage hii")+
+  ylab("Cook's Distance")+
+  ggtitle("Cook's dist vs Leverage hii/(1-hii)")+
+  geom_abline(slope=seq(0,3,0.5), color="gray", linetype="dashed")+
+  theme_bw()
+
+##These plot helps us to find *influential cases* (i.e., subjects) if any. Not all outliers are influential in linear regression analysis. Even though data have extreme values, they might not be influential to determine a regression line. That means, the results would not be much different if we either include or exclude them from analysis.
+```
+
+Checking the  top 5 observations with the highest Cook’s distance.
+```{r}
+model3_results %>%
+  top_n(5, wt = .cooksd)
+
+```
+
+
+### Making Predictions
+
+```{r}
+test %>% 
+  add_predictions(model3) %>%
+  summarise(MSE = mean((count - pred)^2))# test MSE
